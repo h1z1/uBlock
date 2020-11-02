@@ -23,118 +23,673 @@
 
 'use strict';
 
-CodeMirror.defineMode("ubo-static-filtering", function() {
-    const reDirective = /^\s*!#(?:if|endif|include)\b/;
-    const reComment1 = /^\s*!/;
-    const reComment2 = /^\s*#/;
-    const reExt = /(#@?(?:\$\??|\?)?#)(?!##)/;
-    const reNet = /^\s*(?:@@)?.*(?:(\$)(?:[^$]+)?)?$/;
-    let lineStyle = null;
-    let anchorOptPos = null;
-    
-    const lines = [];
-    let iLine = 0;
+/******************************************************************************/
 
-    const lineFromLineBuffer = function() {
-        return lines.length === 1
-            ? lines[0]
-            : lines.filter(a => a.replace(/^\s*|\s+\\$/g, '')).join('');
-    };
+{
+// >>>>> start of local scope
 
-    const parseExtFilter = function() {
-        lineStyle = 'staticext';
-        for ( let i = 0; i < lines.length; i++ ) {
-            const match = reExt.exec(lines[i]);
-            if ( match === null ) { continue; }
-            anchorOptPos = { y: i, x: match.index, l: match[1].length };
-            break;
-        }
-    };
+/******************************************************************************/
 
-    const parseNetFilter = function() {
-        lineStyle = lineFromLineBuffer().startsWith('@@')
-            ? 'staticnetAllow'
-            : 'staticnetBlock';
-        let i = lines.length;
-        while ( i-- ) {
-            const pos = lines[i].lastIndexOf('$');
-            if ( pos === -1 ) { continue; }
-            anchorOptPos = { y: i, x: pos, l: 1 };
-            break;
-        }
-    };
+const redirectNames = new Map();
+const scriptletNames = new Map();
+const preparseDirectiveTokens = new Map();
+const preparseDirectiveHints = [];
 
-    const highlight = function(stream) {
-        if ( anchorOptPos !== null && iLine === anchorOptPos.y ) {
-            if ( stream.pos === anchorOptPos.x ) {
-                stream.pos += anchorOptPos.l;
-                return `${lineStyle} staticOpt`;
+/******************************************************************************/
+
+CodeMirror.defineMode('ubo-static-filtering', function() {
+    const StaticFilteringParser = typeof vAPI === 'object'
+        ? vAPI.StaticFilteringParser
+        : self.StaticFilteringParser;
+    if ( StaticFilteringParser instanceof Object === false ) { return; }
+    const parser = new StaticFilteringParser({ interactive: true });
+
+    const reURL = /\bhttps?:\/\/\S+/;
+    const rePreparseDirectives = /^!#(?:if|endif|include )\b/;
+    const rePreparseIfDirective = /^(!#if ?)(.*)$/;
+    let parserSlot = 0;
+    let netOptionValueMode = false;
+
+    const colorCommentSpan = function(stream) {
+        const { string, pos } = stream;
+        if ( rePreparseDirectives.test(string) === false ) {
+            const match = reURL.exec(string.slice(pos));
+            if ( match !== null ) {
+                if ( match.index === 0 ) {
+                    stream.pos += match[0].length;
+                    return 'comment link';
+                }
+                stream.pos += match.index;
+                return 'comment';
             }
-            if ( stream.pos < anchorOptPos.x ) {
-                stream.pos = anchorOptPos.x;
-                return lineStyle;
+            stream.skipToEnd();
+            return 'comment';
+        }
+        const match = rePreparseIfDirective.exec(string);
+        if ( match === null ) {
+            stream.skipToEnd();
+            return 'variable strong';
+        }
+        if ( pos < match[1].length ) {
+            stream.pos += match[1].length;
+            return 'variable strong';
+        }
+        stream.skipToEnd();
+        if ( match[1].endsWith(' ') === false ) {
+            return 'error strong';
+        }
+        if ( preparseDirectiveTokens.size === 0 ) {
+            return 'positive strong';
+        }
+        let token = match[2];
+        const not = token.startsWith('!');
+        if ( not ) {
+            token = token.slice(1);
+        }
+        if ( preparseDirectiveTokens.has(token) === false ) {
+            return 'error strong';
+        }
+        if ( not !== preparseDirectiveTokens.get(token) ) {
+            return 'positive strong';
+        }
+        return 'negative strong';
+    };
+
+    const colorExtHTMLPatternSpan = function(stream) {
+        const { i } = parser.patternSpan;
+        if ( stream.pos === parser.slices[i+1] ) {
+            stream.pos += 1;
+            return 'def';
+        }
+        stream.skipToEnd();
+        return 'variable';
+    };
+
+    const colorExtScriptletPatternSpan = function(stream) {
+        const { pos, string } = stream;
+        const { i, len } = parser.patternSpan;
+        const patternBeg = parser.slices[i+1];
+        if ( pos === patternBeg ) {
+            stream.pos = pos + 4;
+            return 'def';
+        }
+        if ( len > 3 ) {
+            if ( pos === patternBeg + 4 ) {
+                const match = /^[^,)]+/.exec(string.slice(pos));
+                const token = match && match[0].trim();
+                if ( token && scriptletNames.has(token) === false ) {
+                    stream.pos = pos + match[0].length;
+                    return 'warning';
+                }
+            }
+            const r = parser.slices[i+len+1] - 1;
+            if ( pos < r ) {
+                stream.pos = r;
+                return 'variable';
+            }
+            if ( pos === r ) {
+                stream.pos = pos + 1;
+                return 'def';
             }
         }
         stream.skipToEnd();
-        return lineStyle;
+        return 'variable';
     };
 
-    const parseMultiLine = function() {
-        anchorOptPos = null;
-        const line = lineFromLineBuffer();
-        if ( reDirective.test(line) ) {
-            lineStyle = 'directive';
-            return;
+    const colorExtPatternSpan = function(stream) {
+        if ( (parser.flavorBits & parser.BITFlavorExtScriptlet) !== 0 ) {
+            return colorExtScriptletPatternSpan(stream);
         }
-        if ( reComment1.test(line) ) {
-            lineStyle = 'comment';
-            return;
+        if ( (parser.flavorBits & parser.BITFlavorExtHTML) !== 0 ) {
+            return colorExtHTMLPatternSpan(stream);
         }
-        if ( line.indexOf('#') !== -1 ) {
-            if ( reExt.test(line) ) {
-                return parseExtFilter();
+        stream.skipToEnd();
+        return 'variable';
+    };
+
+    const colorExtSpan = function(stream) {
+        if ( parserSlot < parser.optionsAnchorSpan.i ) {
+            const style = (parser.slices[parserSlot] & parser.BITComma) === 0
+                ? 'value'
+                : 'def';
+            stream.pos += parser.slices[parserSlot+2];
+            parserSlot += 3;
+            return style;
+        }
+        if (
+            parserSlot >= parser.optionsAnchorSpan.i &&
+            parserSlot < parser.patternSpan.i
+        ) {
+            const style = (parser.flavorBits & parser.BITFlavorException) !== 0
+                ? 'tag'
+                : 'def';
+            stream.pos += parser.slices[parserSlot+2];
+            parserSlot += 3;
+            return `${style} strong`;
+        }
+        if (
+            parserSlot >= parser.patternSpan.i &&
+            parserSlot < parser.rightSpaceSpan.i
+        ) {
+            return colorExtPatternSpan(stream);
+        }
+        stream.skipToEnd();
+        return null;
+    };
+
+    const colorNetOptionValueSpan = function(stream, bits) {
+        const { pos, string } = stream;
+        let style;
+        // Warn about unknown redirect tokens.
+        if (
+            string.charCodeAt(pos - 1) === 0x3D /* '=' */ &&
+            /[$,]redirect(-rule)?=$/.test(string.slice(0, pos))
+        ) {
+            style = 'value';
+            let end = parser.skipUntil(
+                parserSlot,
+                parser.commentSpan.i,
+                parser.BITComma
+            );
+            const token = parser.strFromSlices(parserSlot, end - 3);
+            if ( redirectNames.has(token) === false ) {
+                style += ' warning';
             }
-            if ( reComment2.test(line) ) {
-                lineStyle = 'comment';
-                return;
+            stream.pos += token.length;
+            parserSlot = end;
+            return style;
+        }
+        if ( (bits & parser.BITTilde) !== 0 ) {
+            style = 'keyword strong';
+        } else if ( (bits & parser.BITPipe) !== 0 ) {
+            style = 'def';
+        }
+        stream.pos += parser.slices[parserSlot+2];
+        parserSlot += 3;
+        return style || 'value';
+    };
+
+    const colorNetOptionSpan = function(stream) {
+        const bits = parser.slices[parserSlot];
+        let style;
+        if ( (bits & parser.BITComma) !== 0  ) {
+            style = 'def strong';
+            netOptionValueMode = false;
+        } else if ( netOptionValueMode ) {
+            return colorNetOptionValueSpan(stream, bits);
+        } else if ( (bits & parser.BITTilde) !== 0 ) {
+            style = 'keyword strong';
+        } else if ( (bits & parser.BITEqual) !== 0 ) {
+            netOptionValueMode = true;
+        }
+        stream.pos += parser.slices[parserSlot+2];
+        parserSlot += 3;
+        return style || 'def';
+    };
+
+    const colorNetSpan = function(stream) {
+        if ( parserSlot < parser.exceptionSpan.i ) {
+            stream.pos += parser.slices[parserSlot+2];
+            parserSlot += 3;
+            return null;
+        }
+        if (
+            parserSlot === parser.exceptionSpan.i &&
+            parser.exceptionSpan.len !== 0
+        ) {
+            stream.pos += parser.slices[parserSlot+2];
+            parserSlot += 3;
+            return 'tag strong';
+        }
+        if (
+            parserSlot === parser.patternLeftAnchorSpan.i &&
+            parser.patternLeftAnchorSpan.len !== 0 ||
+            parserSlot === parser.patternRightAnchorSpan.i &&
+            parser.patternRightAnchorSpan.len !== 0
+        ) {
+            stream.pos += parser.slices[parserSlot+2];
+            parserSlot += 3;
+            return 'keyword strong';
+        }
+        if (
+            parserSlot >= parser.patternSpan.i &&
+            parserSlot < parser.optionsAnchorSpan.i
+        ) {
+            if ( parser.patternIsRegex() ) {
+                stream.pos = parser.slices[parser.optionsAnchorSpan.i+1];
+                parserSlot = parser.optionsAnchorSpan.i;
+                return 'variable regex';
             }
+            if ( (parser.slices[parserSlot] & (parser.BITAsterisk | parser.BITCaret)) !== 0 ) {
+                stream.pos += parser.slices[parserSlot+2];
+                parserSlot += 3;
+                return 'keyword strong';
+            }
+            const nextSlot = parser.skipUntil(
+                parserSlot + 3,
+                parser.patternRightAnchorSpan.i,
+                parser.BITAsterisk | parser.BITCaret
+            );
+            stream.pos = parser.slices[nextSlot+1];
+            parserSlot = nextSlot;
+            return 'variable';
         }
-        if ( reNet.test(line) ) {
-            return parseNetFilter();
+        if (
+            parserSlot === parser.optionsAnchorSpan.i &&
+            parserSlot < parser.optionsSpan.i !== 0
+        ) {
+            stream.pos += parser.slices[parserSlot+2];
+            parserSlot += 3;
+            return 'def strong';
         }
-        lineStyle = null;
+        if (
+            parserSlot >= parser.optionsSpan.i &&
+            parserSlot < parser.commentSpan.i
+        ) {
+            return colorNetOptionSpan(stream);
+        }
+        if (
+            parserSlot >= parser.commentSpan.i &&
+            parser.commentSpan.len !== 0
+        ) {
+            stream.skipToEnd();
+            return 'comment';
+        }
+        stream.skipToEnd();
+        return null;
+    };
+
+    const colorSpan = function(stream) {
+        if ( parser.category === parser.CATNone || parser.shouldIgnore() ) {
+            stream.skipToEnd();
+            return 'comment';
+        }
+        if ( parser.category === parser.CATComment ) {
+            return colorCommentSpan(stream);
+        }
+        if ( (parser.slices[parserSlot] & parser.BITError) !== 0 ) {
+            stream.pos += parser.slices[parserSlot+2];
+            parserSlot += 3;
+            return 'error';
+        }
+        if ( (parser.slices[parserSlot] & parser.BITIgnore) !== 0 ) {
+            stream.pos += parser.slices[parserSlot+2];
+            parserSlot += 3;
+            return 'comment';
+        }
+        if ( parser.category === parser.CATStaticExtFilter ) {
+            const style = colorExtSpan(stream);
+            return style ? `ext ${style}` : 'ext';
+        }
+        if ( parser.category === parser.CATStaticNetFilter ) {
+            const style = colorNetSpan(stream);
+            return style ? `net ${style}` : 'net';
+        }
+        stream.skipToEnd();
+        return null;
     };
 
     return {
-        startState: function() {
-        },
+        lineComment: '!',
         token: function(stream) {
-            if ( iLine === lines.length || stream.string !== lines[iLine] ) {
-                iLine = 0;
+            let style = '';
+            if ( stream.sol() ) {
+                parser.analyze(stream.string);
+                parser.analyzeExtra();
+                parserSlot = 0;
+                netOptionValueMode = false;
             }
-            if ( iLine === 0 ) {
-                if ( lines.length > 1 ) {
-                    lines.length = 1;
+            style += colorSpan(stream) || '';
+            if ( (parser.flavorBits & parser.BITFlavorError) !== 0 ) {
+                style += ' line-background-error';
+            }
+            style = style.trim();
+            return style !== '' ? style : null;
+        },
+        setHints: function(details) {
+            for ( const [ name, desc ] of details.redirectResources ) {
+                const displayText = desc.aliasOf !== ''
+                    ? `${name} (${desc.aliasOf})`
+                    : '';
+                if ( desc.canRedirect ) {
+                    redirectNames.set(name, displayText);
                 }
-                let line = stream.string;
-                lines[0] = line;
-                if ( line.endsWith(' \\') ) {
-                    do {
-                        line = stream.lookAhead(lines.length);
-                        if (
-                            line === undefined ||
-                            line.startsWith('    ') === false
-                        ) { break; }
-                        lines.push(line);
-                    } while ( line.endsWith(' \\') );
+                if ( desc.canInject && name.endsWith('.js') ) {
+                    scriptletNames.set(name.slice(0, -3), displayText);
                 }
-                parseMultiLine();
             }
-            const style = highlight(stream);
-            if ( stream.eol() ) {
-                iLine += 1;
-            }
-            return style;
+            details.preparseDirectiveTokens.forEach(([ a, b ]) => {
+                preparseDirectiveTokens.set(a, b);
+            });
+            preparseDirectiveHints.push(...details.preparseDirectiveHints);
+            initHints();
         },
     };
 });
+
+/******************************************************************************/
+
+// Following code is for auto-completion. Reference:
+//   https://codemirror.net/demo/complete.html
+
+const initHints = function() {
+    const StaticFilteringParser = typeof vAPI === 'object'
+        ? vAPI.StaticFilteringParser
+        : self.StaticFilteringParser;
+    if ( StaticFilteringParser instanceof Object === false ) { return; }
+
+    const parser = new StaticFilteringParser();
+    const proceduralOperatorNames = new Map(
+        Array.from(parser.proceduralOperatorTokens).filter(item => {
+            return (item[1] & 0b01) !== 0;
+        })
+    );
+
+    const pickBestHints = function(cursor, seedLeft, seedRight, hints) {
+        const seed = (seedLeft + seedRight).trim();
+        const out = [];
+        // First, compare against whole seed
+        for ( const hint of hints ) {
+            const text = hint instanceof Object
+                ? hint.displayText || hint.text
+                : hint;
+            if ( text.startsWith(seed) === false ) { continue; }
+            out.push(hint);
+        }
+        // If no match, try again with a different heuristic
+        if ( out.length === 0 ) {
+            for ( const hint of hints ) {
+                const text = hint instanceof Object
+                    ? hint.displayText || hint.text
+                    : hint;
+                if ( seedLeft.length === 1 ) {
+                    if ( text.startsWith(seedLeft) === false ) { continue; }
+                } else if ( text.includes(seed) === false ) { continue; }
+                out.push(hint);
+            }
+        }
+        return {
+            from: { line: cursor.line, ch: cursor.ch - seedLeft.length },
+            to: { line: cursor.line, ch: cursor.ch + seedRight.length },
+            list: out,
+        };
+    };
+
+    const getNetOptionHints = function(cursor, isNegated, seedLeft, seedRight) {
+        const assignPos = seedRight.indexOf('=');
+        if ( assignPos !== -1 ) { seedRight = seedRight.slice(0, assignPos); }
+        const isException = parser.isException();
+        const hints = [];
+        for ( let [ text, bits ] of parser.netOptionTokenDescriptors ) {
+            if ( isNegated && (bits & parser.OPTCanNegate) === 0 ) { continue; }
+            if ( isException ) {
+                if ( (bits & parser.OPTBlockOnly) !== 0 ) { continue; }
+            } else {
+                if ( (bits & parser.OPTAllowOnly) !== 0 ) { continue; }
+                if ( (assignPos === -1) && (bits & parser.OPTMustAssign) !== 0 ) {
+                    text += '=';
+                }
+            }
+            hints.push(text);
+        }
+        return pickBestHints(cursor, seedLeft, seedRight, hints);
+    };
+
+    const getNetRedirectHints = function(cursor, seedLeft, seedRight) {
+        const hints = [];
+        for ( const text of redirectNames.keys() ) {
+            hints.push(text);
+        }
+        return pickBestHints(cursor, seedLeft, seedRight, hints);
+    };
+
+    const getNetHints = function(cursor, line) {
+        const beg = cursor.ch;
+        if ( beg < parser.optionsSpan ) { return; }
+        const lineBefore = line.slice(0, beg);
+        const lineAfter = line.slice(beg);
+        let matchLeft = /~?([^$,~]*)$/.exec(lineBefore);
+        let matchRight = /^([^,]*)/.exec(lineAfter);
+        if ( matchLeft === null || matchRight === null ) { return; }
+        let pos = matchLeft[1].indexOf('=');
+        if ( pos === -1 ) {
+            return getNetOptionHints(
+                cursor,
+                matchLeft[0].startsWith('~'),
+                matchLeft[1],
+                matchRight[1]
+            );
+        }
+        return getNetRedirectHints(
+            cursor,
+            matchLeft[1].slice(pos + 1),
+            matchRight[1]
+        );
+    };
+
+    const getExtSelectorHints = function(cursor, line) {
+        const beg = cursor.ch;
+        const matchLeft = /#\^?.*:([^:]*)$/.exec(line.slice(0, beg));
+        const matchRight = /^([a-z-]*)\(?/.exec(line.slice(beg));
+        if ( matchLeft === null || matchRight === null ) { return; }
+        const isStaticDOM = matchLeft[0].indexOf('^') !== -1;
+        const hints = [];
+        for ( let [ text, bits ] of proceduralOperatorNames ) {
+            if ( isStaticDOM && (bits & 0b10) !== 0 ) { continue; }
+            hints.push(text);
+        }
+        return pickBestHints(cursor, matchLeft[1], matchRight[1], hints);
+    };
+
+    const getExtScriptletHints = function(cursor, line) {
+        const beg = cursor.ch;
+        const matchLeft = /#\+\js\(([^,]*)$/.exec(line.slice(0, beg));
+        const matchRight = /^([^,)]*)/.exec(line.slice(beg));
+        if ( matchLeft === null || matchRight === null ) { return; }
+        const hints = [];
+        for ( const [ text, displayText ] of scriptletNames ) {
+            const hint = { text };
+            if ( displayText !== '' ) {
+                hint.displayText = displayText;
+            }
+            hints.push(hint);
+        }
+        return pickBestHints(cursor, matchLeft[1], matchRight[1], hints);
+    };
+
+    const getCommentHints = function(cursor, line) {
+        const beg = cursor.ch;
+        if ( line.startsWith('!#if ') ) {
+            const matchLeft = /^!#if !?(\w*)$/.exec(line.slice(0, beg));
+            const matchRight = /^\w*/.exec(line.slice(beg));
+            if ( matchLeft === null || matchRight === null ) { return; }
+            return pickBestHints(
+                cursor,
+                matchLeft[1],
+                matchRight[0],
+                preparseDirectiveHints
+            );
+        }
+        if ( line.startsWith('!#') && line !== '!#endif' ) {
+            const matchLeft = /^!#(\w*)$/.exec(line.slice(0, beg));
+            const matchRight = /^\w*/.exec(line.slice(beg));
+            if ( matchLeft === null || matchRight === null ) { return; }
+            const hints = [ 'if ', 'endif\n', 'include ' ];
+            return pickBestHints(cursor, matchLeft[1], matchRight[0], hints);
+        }
+    };
+
+    CodeMirror.registerHelper('hint', 'ubo-static-filtering', function(cm) {
+        const cursor = cm.getCursor();
+        const line = cm.getLine(cursor.line);
+        parser.analyze(line);
+        if ( parser.category === parser.CATStaticExtFilter ) {
+            if ( parser.hasFlavor(parser.BITFlavorExtScriptlet) ) {
+                return getExtScriptletHints(cursor, line);
+            }
+            return getExtSelectorHints(cursor, line);
+        }
+        if ( parser.category === parser.CATStaticNetFilter ) {
+            return getNetHints(cursor, line);
+        }
+        if ( parser.category === parser.CATComment ) {
+            return getCommentHints(cursor, line);
+        }
+    });
+};
+
+/******************************************************************************/
+
+CodeMirror.registerHelper('fold', 'ubo-static-filtering', (( ) => {
+    const foldIfEndif = function(startLineNo, startLine, cm) {
+        const lastLineNo = cm.lastLine();
+        let endLineNo = startLineNo;
+        let depth = 1;
+        while ( endLineNo < lastLineNo ) {
+            endLineNo += 1;
+            const line = cm.getLine(endLineNo);
+            if ( line.startsWith('!#endif') ) {
+                depth -= 1;
+                if ( depth === 0 ) {
+                    return {
+                        from: CodeMirror.Pos(startLineNo, startLine.length),
+                        to: CodeMirror.Pos(endLineNo, 0)
+                    };
+                }
+            }
+            if ( line.startsWith('!#if') ) {
+                depth += 1;
+            }
+        }
+    };
+
+    const foldInclude = function(startLineNo, startLine, cm) {
+        const lastLineNo = cm.lastLine();
+        let endLineNo = startLineNo + 1;
+        if ( endLineNo >= lastLineNo ) { return; }
+        if ( cm.getLine(endLineNo).startsWith('! >>>>>>>> ') === false ) {
+            return;
+        }
+        while ( endLineNo < lastLineNo ) {
+            endLineNo += 1;
+            const line = cm.getLine(endLineNo);
+            if ( line.startsWith('! <<<<<<<< ') ) {
+                return {
+                    from: CodeMirror.Pos(startLineNo, startLine.length),
+                    to: CodeMirror.Pos(endLineNo, line.length)
+                };
+            }
+        }
+    };
+
+    return function(cm, start) {
+        const startLineNo = start.line;
+        const startLine = cm.getLine(startLineNo);
+        if ( startLine.startsWith('!#if') ) {
+            return foldIfEndif(startLineNo, startLine, cm);
+        }
+        if ( startLine.startsWith('!#include ') ) {
+            return foldInclude(startLineNo, startLine, cm);
+        }
+    };
+})());
+
+/******************************************************************************/
+
+// Enhanced word selection
+
+{
+    const Pass = CodeMirror.Pass;
+
+    const selectWordAt = function(cm, pos) {
+        const { line, ch } = pos;
+
+        // Leave current selection alone
+        if ( cm.somethingSelected() ) {
+            const from = cm.getCursor('from');
+            const to = cm.getCursor('to');
+            if (
+                (line > from.line || line === from.line && ch > from.ch) &&
+                (line < to.line || line === to.line && ch < to.ch)
+            ) {
+                return Pass;
+            }
+        }
+
+        const s = cm.getLine(line);
+        const token = cm.getTokenTypeAt(pos);
+        let beg, end;
+
+        // Select URL in comments
+        if ( /\bcomment\b/.test(token) && /\blink\b/.test(token) ) {
+            const l = /\S+$/.exec(s.slice(0, ch));
+            if ( l && /^https?:\/\//.test(s.slice(l.index)) ) {
+                const r = /^\S+/.exec(s.slice(ch));
+                if ( r ) {
+                    beg = l.index;
+                    end = ch + r[0].length;
+                }
+            }
+        }
+
+        // Better word selection for cosmetic filters
+        else if ( /\bext\b/.test(token) ) {
+            if ( /\bvalue\b/.test(token) ) {
+                const l = /[^,.]*$/i.exec(s.slice(0, ch));
+                const r = /^[^#,]*/i.exec(s.slice(ch));
+                if ( l && r ) {
+                    beg = l.index;
+                    end = ch + r[0].length;
+                }
+            } else if ( /\bvariable\b/.test(token) ) {
+                const l = /[#.]?[a-z0-9_-]+$/i.exec(s.slice(0, ch));
+                const r = /^[a-z0-9_-]+/i.exec(s.slice(ch));
+                if ( l && r ) {
+                    beg = l.index;
+                    end = ch + r[0].length;
+                    if ( /\bdef\b/.test(cm.getTokenTypeAt({ line, ch: beg + 1 })) ) {
+                        beg += 1;
+                    }
+                }
+            }
+        }
+
+        // Better word selection for network filters
+        else if ( /\bnet\b/.test(token) ) {
+            if ( /\bvalue\b/.test(token) ) {
+                const l = /[^ ,.=|]*$/i.exec(s.slice(0, ch));
+                const r = /^[^ #,|]*/i.exec(s.slice(ch));
+                if ( l && r ) {
+                    beg = l.index;
+                    end = ch + r[0].length;
+                }
+            } else if ( /\bdef\b/.test(token) ) {
+                const l = /[a-z0-9-]+$/i.exec(s.slice(0, ch));
+                const r = /^[^,]*=[^,]+/i.exec(s.slice(ch));
+                if ( l && r ) {
+                    beg = l.index;
+                    end = ch + r[0].length;
+                }
+            }
+        }
+
+        if ( beg === undefined ) { return Pass; }
+        cm.setSelection(
+            { line, ch: beg },
+            { line, ch: end }
+        );
+    };
+
+    CodeMirror.defineInitHook(cm => {
+        cm.addKeyMap({
+            'LeftDoubleClick': selectWordAt,
+        });
+    });
+}
+
+/******************************************************************************/
+
+// <<<<< end of local scope
+}
+
+/******************************************************************************/

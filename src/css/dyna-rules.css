@@ -1,18 +1,22 @@
 html {
     height: 100vh;
     overflow: hidden;
+    width: 100vw;
     }
 body {
     display: flex;
     flex-direction: column;
+    height: 100%;
+    justify-content: stretch;
     overflow: hidden;
+    width: 100%;
+    }
+.body {
+    flex-shrink: 0;
     }
 #diff {
     border: 0;
     border-top: 1px solid #eee;
-    flex-grow: 1;
-    margin: 0;
-    padding: 0;
     white-space: nowrap;
 }
 #diff .tools > * {
@@ -28,40 +32,51 @@ body {
     width: 50%;
     white-space: nowrap;
     }
-#diff .ruleActions h3 {
-    font-weight: normal;
+#diff .ruleActions .fieldset-header {
     margin: 0.5em 0;
-    }
-#ruleFilter {
-    direction: ltr;
-    text-align: center;
-    }
-#ruleFilter .fa {
-    color: var(--fg-0-60);
     }
 #revertButton,
 #commitButton,
 body.editing #diff #exportButton,
 body.editing #diff #importButton {
-    background-color: var(--bg-button-disabled);
-    color: var(--fg-button-disabled);
-    fill: var(--fg-button-disabled);
+    background-color: var(--button-disabled-surface);
+    color: var(--button-disabled-ink);
+    fill: var(--button-disabled-ink);
+    filter: var(--button-disabled-filter);
     pointer-events: none;
     }
 body:not(.editing) #diff.dirty #revertButton,
 body:not(.editing) #diff.dirty #commitButton {
-    background-color: var(--bg-button);
-    color: var(--fg-button);
-    fill: var(--fg-button);
+    background-color: var(--button-surface);
+    color: var(--button-ink);
+    fill: var(--button-ink);
+    filter: none;
     pointer-events: auto;
     }
 body:not(.editing) #diff.dirty #revertButton:hover,
 body:not(.editing) #diff.dirty #commitButton:hover {
-    background-color: var(--bg-button-hover);
+    background-color: var(--button-surface-hover);
+    }
+
+#ruleFilter {
+    align-items: center;
+    direction: ltr;
+    display: flex;
+    justify-content: center;
+    }
+#ruleFilter .fa {
+    color: var(--fg-0-60);
+    }
+#ruleFilter #diffCollapse {
+    padding: 0 0.5em;
+    font-size: 150%;
+    }
+#ruleFilter #diffCollapse.active {
+    transform: scale(1, -1);
     }
 
 .codeMirrorContainer {
-    height: 60vh;
+    flex-grow: 1;
     }
 .CodeMirror-merge, .CodeMirror-merge-pane, .CodeMirror-merge .CodeMirror {
     box-sizing: border-box;
@@ -81,3 +96,8 @@ body[dir="rtl"] .CodeMirror-merge-pane-rightmost {
     right: unset;
     left: 0;
 }
+
+/* mobile devices */
+:root.mobile #diff .tools {
+    overflow: auto;
+    }

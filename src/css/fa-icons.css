@@ -15,12 +15,11 @@
     pointer-events: none;
     }
 .fa-icon.disabled,
-.disabled > .fa-icon,
-.fa-icon[disabled],
-[disabled] > .fa-icon {
-    color: var(--fg-button-disabled);
-    fill: var(--fg-button-disabled);
-    stroke: var(--fg-button-disabled);
+.fa-icon[disabled] {
+    color: var(--button-disabled-ink);
+    fill: var(--button-disabled-ink);
+    filter: var(--button-disabled-filter);
+    stroke: var(--button-disabled-ink);
     pointer-events: none;
     }
 .fa-icon > .fa-icon-badge,
@@ -41,6 +40,7 @@
 
 .fa-icon > svg {
     height: 1em;
+    overflow: visible;
     width: 1em;
     }
 

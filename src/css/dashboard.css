@@ -1,14 +1,18 @@
 html, body {
-    height: 100%;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    justify-content: stretch;
     overflow: hidden;
     position: relative;
-    width: 100%;
+    width: 100vw;
     }
 #dashboard-nav {
-    background-color: var(--bg-1);
+    background-color: var(--default-surface);
     border: 0;
-    border-bottom: 1px solid var(--bg-1-border);
+    box-shadow: var(--dashboard-bar-shadow);
     display: flex;
+    flex-shrink: 0;
     flex-wrap: wrap;
     overflow-x: hidden;
     padding: 0;
@@ -17,36 +21,29 @@ html, body {
     width: 100%;
     z-index: 10;
     }
-#dashboard-nav .logo {
-    align-items: center;
-    display: inline-flex;
-    padding: 0 0.5em;
-    width: 1.25em;
-    }
-#dashboard-nav .logo > img {
-    width: 100%;
-    }
 .tabButton {
     border: 0;
     border-bottom: 3px solid var(--bg-1);
-    color: var(--fg-dashboard-nav-off);
-    fill: var(--fg-dashboard-nav-off);
-    cursor: pointer;
-    padding: 0.5em 1.4em 0.3em 1.4em;
+    border-top: 3px solid transparent;
+    color: var(--dashboard-tab-ink);
+    fill: var(--dashboard-tab-ink);
+    padding: 0.5em 1.4em calc(0.5em - 3px);
     text-decoration: none;
+    user-select: none;
     white-space: nowrap;
     }
 .tabButton:focus {
     outline: 0;
     }
 .tabButton.selected {
-    border-bottom: 3px solid var(--fg-dashboard-nav-on);
-    color: var(--fg-dashboard-nav-on);
-    fill: var(--fg-dashboard-nav-on);
+    border-bottom: 3px solid var(--dashboard-tab-active-ink);
+    color: var(--dashboard-tab-active-ink);
+    fill: var(--dashboard-tab-active-ink);
     }
 iframe {
     background-color: transparent;
     border: 0;
+    flex-grow: 1;
     margin: 0;
     padding: 0;
     width: 100%;
@@ -76,12 +73,30 @@ body:not(.canUpdateShortcuts) .tabButton[data-pane="shortcuts.html"] {
     display: none;
     }
 
-@media (pointer: coarse) {
-    #dashboard-nav {
-        flex-wrap: nowrap;
-        overflow-x: auto;
+/* high dpi devices */
+:root.hidpi .tabButton {
+    font-family: Metropolis, sans-serif;
+    font-weight: 600;
+    letter-spacing: 0.5px;
     }
-    #dashboard-nav .logo {
-        display: none;
+
+/* hover-able devices */
+:root.desktop .tabButton {
+    cursor: default;
     }
-}
+:root.desktop .tabButton:not(.selected) {
+    cursor: pointer;
+    }
+:root.desktop .tabButton:not(.selected):hover {
+    background-color: var(--dashboard-tab-surface-hover);
+    border-bottom-color: var(--dashboard-tab-surface-hover);
+    }
+
+/* touch-screen devices */
+:root.mobile #dashboard-nav {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    }
+:root.mobile #dashboard-nav .logo {
+    display: none;
+    }

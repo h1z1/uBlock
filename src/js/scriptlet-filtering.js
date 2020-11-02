@@ -30,13 +30,7 @@
     const reEscapeScriptArg = /[\\'"]/g;
 
     const scriptletDB = new µb.staticExtFilteringEngine.HostnameBasedDB(1);
-    const sessionScriptletDB = new (
-        class extends µb.staticExtFilteringEngine.SessionDB {
-            compile(s) {
-                return s.slice(4, -1).trim();
-            }
-        }
-    )();
+    const sessionScriptletDB = new µb.staticExtFilteringEngine.SessionDB();
 
     let acceptedCount = 0;
     let discardedCount = 0;
@@ -100,64 +94,6 @@
                     }
                 };
                 injectScriptlets(document);
-                const processIFrame = function(iframe) {
-                    const src = iframe.src;
-                    if ( /^https?:\/\//.test(src) === false ) {
-                        injectScriptlets(iframe.contentDocument);
-                    }
-                };
-                let observerTimer,
-                    observerLists = [];
-                const observerAsync = function() {
-                    for ( const nodelist of observerLists ) {
-                        for ( const node of nodelist ) {
-                            if ( node.nodeType !== 1 ) { continue; }
-                            if ( node.parentElement === null ) { continue; }
-                            if ( node.localName === 'iframe' ) {
-                                processIFrame(node);
-                            }
-                            if ( node.childElementCount === 0 ) { continue; }
-                            let iframes = node.querySelectorAll('iframe');
-                            for ( const iframe of iframes ) {
-                                processIFrame(iframe);
-                            }
-                        }
-                    }
-                    observerLists = [];
-                    observerTimer = undefined;
-                };
-                const ready = function(ev) {
-                    if ( ev !== undefined ) {
-                        window.removeEventListener(ev.type, ready);
-                    }
-                    const iframes = document.getElementsByTagName('iframe');
-                    if ( iframes.length !== 0 ) {
-                        observerLists.push(iframes);
-                        observerTimer = setTimeout(observerAsync, 1);
-                    }
-                    const observer = new MutationObserver(function(mutations) {
-                        for ( const mutation of mutations ) {
-                            if ( mutation.addedNodes.length !== 0 ) {
-                                observerLists.push(mutation.addedNodes);
-                            }
-                        }
-                        if (
-                            observerLists.length !== 0 &&
-                            observerTimer === undefined
-                        ) {
-                            observerTimer = setTimeout(observerAsync, 1);
-                        }
-                    });
-                    observer.observe(
-                        document.documentElement,
-                        { childList: true, subtree: true }
-                    );
-                };
-                if ( document.readyState === 'loading' ) {
-                    window.addEventListener('DOMContentLoaded', ready);
-                } else {
-                    ready();
-                }
             }.toString(),
             ')(',
                 '"', 'hostname-slot', '", ',
@@ -177,15 +113,20 @@
         };
     })();
 
+    // TODO: Probably should move this into StaticFilteringParser
+    // https://github.com/uBlockOrigin/uBlock-issues/issues/1031
+    //   Normalize scriptlet name to its canonical, unaliased name.
     const normalizeRawFilter = function(rawFilter) {
-        let rawToken = rawFilter.slice(4, -1);
-        let rawEnd = rawToken.length;
+        const rawToken = rawFilter.slice(4, -1);
+        const rawEnd = rawToken.length;
         let end = rawToken.indexOf(',');
-        if ( end === -1 ) {
-            end = rawEnd;
-        }
-        let token = rawToken.slice(0, end).trim();
-        let normalized = token.endsWith('.js') ? token.slice(0, -3) : token;
+        if ( end === -1 ) { end = rawEnd; }
+        const token = rawToken.slice(0, end).trim();
+        const alias = token.endsWith('.js') ? token.slice(0, -3) : token;
+        let normalized = µb.redirectEngine.aliases.get(`${alias}.js`);
+        normalized = normalized === undefined
+            ? alias
+            : normalized.slice(0, -3);
         let beg = end + 1;
         while ( beg < rawEnd ) {
             end = rawToken.indexOf(',', beg);
@@ -288,20 +229,19 @@
         scriptletDB.collectGarbage();
     };
 
-    api.compile = function(parsed, writer) {
+    api.compile = function(parser, writer) {
         // 1001 = scriptlet injection
         writer.select(1001);
 
         // Only exception filters are allowed to be global.
-        const normalized = normalizeRawFilter(parsed.suffix);
+        const { raw, exception } = parser.result;
+        const normalized = normalizeRawFilter(raw);
 
         // Tokenless is meaningful only for exception filters.
-        if ( normalized === '+js()' && parsed.exception === false ) {
-            return;
-        }
+        if ( normalized === '+js()' && exception === false ) { return; }
 
-        if ( parsed.hostnames.length === 0 ) {
-            if ( parsed.exception ) {
+        if ( parser.hasOptions() === false ) {
+            if ( exception ) {
                 writer.push([ 32, '', 1, normalized ]);
             }
             return;
@@ -311,16 +251,13 @@
         //   Ignore instances of exception filter with negated hostnames,
         //   because there is no way to create an exception to an exception.
 
-        for ( let hn of parsed.hostnames ) {
-            const negated = hn.charCodeAt(0) === 0x7E /* '~' */;
-            if ( negated ) {
-                hn = hn.slice(1);
-            }
+        for ( const { hn, not, bad } of parser.extOptions() ) {
+            if ( bad ) { continue; }
             let kind = 0;
-            if ( parsed.exception ) {
-                if ( negated ) { continue; }
+            if ( exception ) {
+                if ( not ) { continue; }
                 kind |= 1;
-            } else if ( negated ) {
+            } else if ( not ) {
                 kind |= 1;
             }
             writer.push([ 32, hn, kind, normalized ]);
@@ -462,10 +399,10 @@
             code = 'debugger;\n' + code;
         }
         vAPI.tabs.executeScript(details.tabId, {
-            code: code,
+            code,
             frameId: details.frameId,
-            matchAboutBlank: false,
-            runAt: 'document_start'
+            matchAboutBlank: true,
+            runAt: 'document_start',
         });
     };
 
@@ -480,10 +417,10 @@
     api.benchmark = async function() {
         const requests = await µb.loadBenchmarkDataset();
         if ( Array.isArray(requests) === false || requests.length === 0 ) {
-            console.info('No requests found to benchmark');
+            log.print('No requests found to benchmark');
             return;
         }
-        console.info('Benchmarking scriptletFilteringEngine.retrieve()...');
+        log.print('Benchmarking scriptletFilteringEngine.retrieve()...');
         const details = {
             domain: '',
             entity: '',
@@ -495,7 +432,7 @@
         const t0 = self.performance.now();
         for ( let i = 0; i < requests.length; i++ ) {
             const request = requests[i];
-            if ( request.cpt !== 'document' ) { continue; }
+            if ( request.cpt !== 'main_frame' ) { continue; }
             count += 1;
             details.url = request.url;
             details.hostname = µb.URI.hostnameFromURI(request.url);
@@ -505,8 +442,8 @@
         }
         const t1 = self.performance.now();
         const dur = t1 - t0;
-        console.info(`Evaluated ${count} requests in ${dur.toFixed(0)} ms`);
-        console.info(`\tAverage: ${(dur / count).toFixed(3)} ms per request`);
+        log.print(`Evaluated ${count} requests in ${dur.toFixed(0)} ms`);
+        log.print(`\tAverage: ${(dur / count).toFixed(3)} ms per request`);
     };
 
     return api;

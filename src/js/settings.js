@@ -117,11 +117,29 @@ const exportToFile = async function() {
 /******************************************************************************/
 
 const onLocalDataReceived = function(details) {
+    let v, unit;
+    if ( typeof details.storageUsed === 'number' ) {
+        v = details.storageUsed;
+        if ( v < 1e3 ) {
+            unit = 'genericBytes';
+        } else if ( v < 1e6 ) {
+            v /= 1e3;
+            unit = 'KB';
+        } else if ( v < 1e9 ) {
+            v /= 1e6;
+            unit = 'MB';
+        } else {
+            v /= 1e9;
+            unit = 'GB';
+        }
+    } else {
+        v = '?';
+        unit = '';
+    }
     uDom.nodeFromId('storageUsed').textContent =
-        vAPI.i18n('settingsStorageUsed').replace(
-            '{{value}}',
-            typeof details.storageUsed === 'number' ? details.storageUsed.toLocaleString() : '?'
-        );
+        vAPI.i18n('storageUsed')
+            .replace('{{value}}', v.toLocaleString(undefined, { maximumSignificantDigits: 3 }))
+            .replace('{{unit}}', unit && vAPI.i18n(unit) || '');
 
     const timeOptions = {
         weekday: 'long',
@@ -253,12 +271,12 @@ const onUserSettingsReceived = function(details) {
 
 /******************************************************************************/
 
-Promise.all([
-    vAPI.messaging.send('dashboard', { what: 'userSettings' }),
-    vAPI.messaging.send('dashboard', { what: 'getLocalData' }),
-]).then(results => {
-    onUserSettingsReceived(results[0]);
-    onLocalDataReceived(results[1]);
+vAPI.messaging.send('dashboard', { what: 'userSettings' }).then(result => {
+    onUserSettingsReceived(result);
+});
+
+vAPI.messaging.send('dashboard', { what: 'getLocalData' }).then(result => {
+    onLocalDataReceived(result);
 });
 
 // https://github.com/uBlockOrigin/uBlock-issues/issues/591

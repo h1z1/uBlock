@@ -85,7 +85,7 @@
   },
   "popupBlockedStats": {
     "message": "{{count}} o {{percent}}%",
-    "description": "Example: 15 or 13%"
+    "description": "Example: 15 (13%)"
   },
   "popupBlockedSinceInstallPrompt": {
     "message": "dall'installazione",
@@ -179,25 +179,33 @@
     "message": "Clicca per non disabilitare più JavaScript su questo sito",
     "description": "Tooltip for the no-scripting per-site switch"
   },
+  "popupNoPopups_v2": {
+    "message": "Finestre pop-up",
+    "description": "Caption for the no-popups per-site switch"
+  },
   "popupNoLargeMedia_v2": {
     "message": "Elementi multimediali di grandi dimensioni",
-    "description": "Tip for the no-large-media per-site switch"
+    "description": "Caption for the no-large-media per-site switch"
   },
   "popupNoCosmeticFiltering_v2": {
     "message": "Filtraggio cosmetico",
-    "description": "Tip for the no-cosmetic-filtering per-site switch"
+    "description": "Caption for the no-cosmetic-filtering per-site switch"
   },
   "popupNoRemoteFonts_v2": {
     "message": "Tipi di carattere remoti",
-    "description": "Tip for the no-remote-fonts per-site switch"
+    "description": "Caption for the no-remote-fonts per-site switch"
   },
   "popupNoScripting_v2": {
     "message": "JavaScript",
-    "description": "Tip for the no-scripting per-site switch"
+    "description": "Caption for the no-scripting per-site switch"
   },
   "popupMoreButton_v2": {
     "message": "Altro",
-    "description": "Label to be used to toggle overview panel"
+    "description": "Label to be used to show popup panel sections"
+  },
+  "popupLessButton_v2": {
+    "message": "Meno",
+    "description": "Label to be used to hide popup panel sections"
   },
   "popupTipGlobalRules": {
     "message": "Regole globali: questa colonna è per le regole che si applicano a tutti i siti.",
@@ -254,6 +262,10 @@
   "popupHitDomainCount": {
     "message": "{{count}} di {{total}}",
     "description": "appears in popup"
+  },
+  "popupVersion": {
+    "message": "Versione",
+    "description": "Example of use: Version 1.26.4"
   },
   "pickerCreate": {
     "message": "Crea",
@@ -358,10 +370,6 @@
   "settingsNoCSPReportsPrompt": {
     "message": "Blocca i report CSP",
     "description": "background information: https://github.com/gorhill/uBlock/issues/3150"
-  },
-  "settingsStorageUsed": {
-    "message": "Spazio utilizzato: {{value}} byte",
-    "description": "English: Storage used: {{}} bytes"
   },
   "settingsLastRestorePrompt": {
     "message": "Ultimo ripristino:",
@@ -543,9 +551,25 @@
     "message": "Sintassi per le regole: <code>sorgente destinazione tipo azione</code> (<a href='https://github.com/gorhill/uBlock/wiki/Dynamic-filtering:-rule-syntax'>documentazione completa</a>).",
     "description": "English: dynamic rule syntax and full documentation."
   },
+  "rulesSort": {
+    "message": "Ordina:",
+    "description": "English: label for sort option."
+  },
+  "rulesSortByType": {
+    "message": "Tipo regola",
+    "description": "English: a sort option for list of rules."
+  },
+  "rulesSortBySource": {
+    "message": "Fonte",
+    "description": "English: a sort option for list of rules."
+  },
+  "rulesSortByDestination": {
+    "message": "Destinazione",
+    "description": "English: a sort option for list of rules."
+  },
   "whitelistPrompt": {
     "message": "Lista dei siti dove uBlock è disattivato. Un sito per ogni riga. Le voci non valide verranno silenziosamente ignorate.",
-    "description": "English: An overview of the content of the dashboard's Whitelist pane."
+    "description": "The name of the trusted sites pane."
   },
   "whitelistImport": {
     "message": "Importa e aggiungi",
@@ -556,8 +580,8 @@
     "description": "English: Export"
   },
   "whitelistExportFilename": {
-    "message": "ublock-whitelist_{{datetime}}.txt",
-    "description": "English: my-ublock-whitelist_{{datetime}}.txt"
+    "message": "ublock-lista-bianca_{{datetime}}.txt",
+    "description": "The default filename to use for import/export purpose"
   },
   "whitelistApply": {
     "message": "Salva i cambiamenti",
@@ -831,6 +855,18 @@
     "message": "Collaboratori",
     "description": "English: Contributors"
   },
+  "aboutSourceCode": {
+    "message": "Codice sorgente",
+    "description": "Link text to source code repo"
+  },
+  "aboutTranslations": {
+    "message": "Traduzioni",
+    "description": "Link text to translations repo"
+  },
+  "aboutFilterLists": {
+    "message": "Liste filtri",
+    "description": "Link text to uBO's own filter lists repo"
+  },
   "aboutDependencies": {
     "message": "Dipendenze esterne (GPLv3-compatibili):",
     "description": "Shown in the About pane"
@@ -869,7 +905,11 @@
   },
   "subscriberConfirm": {
     "message": "uBlock₀: Aggiungere il seguente URL alla tua lista dei filtri personalizzata?\n\nTitolo: \"{{title}}\"\nURL: {{url}}",
-    "description": "English: The message seen by the user to confirm subscription to a ABP filter list"
+    "description": "No longer used"
+  },
+  "subscribeButton": {
+    "message": "Abbonati",
+    "description": "For the button used to subscribe to a filter list"
   },
   "elapsedOneMinuteAgo": {
     "message": "un minuto fa",
@@ -909,11 +949,11 @@
   },
   "docblockedPrompt1": {
     "message": "uBlock₀ ha impedito alla seguente pagina di caricarsi:",
-    "description": "English: uBlock₀ has prevented the following page from loading:"
+    "description": "Used in the strict-blocking page"
   },
   "docblockedPrompt2": {
     "message": "A causa del seguente filtro",
-    "description": "English: Because of the following filter"
+    "description": "Used in the strict-blocking page"
   },
   "docblockedNoParamsPrompt": {
     "message": "senza parametri",
@@ -1006,6 +1046,26 @@
   "relaxBlockingMode": {
     "message": "Rilassa la modalità di blocco",
     "description": "Label for keyboard shortcut used to relax blocking mode (meant to replace 'Toggle blocking profile')"
+  },
+  "storageUsed": {
+    "message": "Spazio utilizzato: {{value}} {{unit}}",
+    "description": " In Setting pane, renders as (example): Storage used: 13.2 MB"
+  },
+  "KB": {
+    "message": "KB",
+    "description": "short for 'kilobytes'"
+  },
+  "MB": {
+    "message": "MB",
+    "description": "short for 'megabytes'"
+  },
+  "GB": {
+    "message": "GB",
+    "description": "short for 'gigabytes'"
+  },
+  "clickToLoad": {
+    "message": "Clicca per caricare",
+    "description": "Message used in frame placeholders"
   },
   "dummy": {
     "message": "This entry must be the last one",

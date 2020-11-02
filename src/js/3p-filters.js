@@ -30,7 +30,7 @@
 /******************************************************************************/
 
 const lastUpdateTemplateString = vAPI.i18n('3pLastUpdate');
-const reValidExternalList = /[a-z-]+:\/\/\S*\/\S+/;
+const reValidExternalList = /^[a-z-]+:\/\/(?:\S+\/\S*|\/\S+)/m;
 
 let listDetails = {};
 let filteringSettingsHash = '';
@@ -95,7 +95,7 @@ const renderFilterLists = function(soft) {
             elem = li.querySelector('.listname');
             elem.textContent = listNameFromListKey(listKey);
             elem = li.querySelector('a.content');
-            elem.setAttribute('href', 'asset-viewer.html?url=' + encodeURI(listKey));
+            elem.setAttribute('href', 'asset-viewer.html?url=' + encodeURIComponent(listKey));
             elem.setAttribute('type', 'text/html');
             li.classList.remove('toRemove');
             if ( entry.supportName ) {
@@ -313,17 +313,23 @@ const renderFilterLists = function(soft) {
 /******************************************************************************/
 
 const renderWidgets = function() {
-    uDom('#buttonApply').toggleClass(
+    let cl = uDom.nodeFromId('buttonApply').classList;
+    cl.toggle(
         'disabled',
         filteringSettingsHash === hashFromCurrentFromSettings()
     );
-    uDom('#buttonPurgeAll').toggleClass(
+    const updating = document.body.classList.contains('updating');
+    cl = uDom.nodeFromId('buttonUpdate').classList;
+    cl.toggle('active', updating);
+    cl.toggle(
         'disabled',
-        document.querySelector('#lists .listEntry.cached:not(.obsolete)') === null
-    );
-    uDom('#buttonUpdate').toggleClass(
+        updating === false &&
+        document.querySelector('#lists .listEntry.obsolete:not(.toRemove) input[type="checkbox"]:checked') === null
+        );
+    cl = uDom.nodeFromId('buttonPurgeAll').classList;
+    cl.toggle(
         'disabled',
-        document.querySelector('body:not(.updating) #lists .listEntry.obsolete:not(.toRemove) input[type="checkbox"]:checked') === null
+        updating || document.querySelector('#lists .listEntry.cached:not(.obsolete)') === null
     );
 };
 
